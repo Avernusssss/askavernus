@@ -1,3 +1,6 @@
+import g4f
+import googletrans
+
 from g4f import AsyncClient
 from googletrans import Translator
 
