@@ -3,15 +3,19 @@ from googletrans import Translator
 
 import logging
 import asyncio
+import os
+from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot("7676133140:AAFQUfgJYcg7103J72adVTGJiJZ1m_-bAoQ")
+bot = Bot(os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
 router = Router()
 
@@ -22,14 +26,14 @@ class ChoosingBot(StatesGroup):
 @dp.message(Command('start'))
 async def start_command(message: types.Message):
     await message.answer(
-        "Здарова\n/gpt\n/img")
+        "Выбирай че те надо, пентюх\n/чат\n/картинка")
 
-@dp.message(Command('gpt'))
+@dp.message(Command('чат'))
 async def set_state_gpt(message: types.Message, state: FSMContext):
     await message.answer("Ну спрашивай, я книжки читал.")
     await state.set_state(ChoosingBot.Gpt)
 
-@dp.message(Command('img'))
+@dp.message(Command('картинка'))
 async def set_state_gpt(message: types.Message, state: FSMContext):
     await message.answer("Че нарисовать?")
     await state.set_state(ChoosingBot.Img)
@@ -46,7 +50,7 @@ async def send_answer_request(message: types.Message):
     try:
         client = AsyncClient()
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="deepseek-chat",
             messages=[{"role": "user", "content": user_input}],
             web_search=False
 
@@ -56,9 +60,7 @@ async def send_answer_request(message: types.Message):
 
     except Exception as e:
         print("Error: ", e)
-        chat_gpt_response = "Ну и хуйню ты сморозил..."
-
-    # await msg.edit_text(chat_gpt_response, parse_mode='Markdown')
+        await msg.edit_text("Ну и хуйню ты сморозил...", parse_mode='Markdown')
 
 # image
 @dp.message(StateFilter("ChoosingBot:Img"))
