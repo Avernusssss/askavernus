@@ -1,19 +1,28 @@
 from g4f import AsyncClient
 from googletrans import Translator
+from database import Database
+import uuid
 
 import logging
 import asyncio
+import os
+from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot("7676133140:AAFQUfgJYcg7103J72adVTGJiJZ1m_-bAoQ")
+bot = Bot(os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
 router = Router()
+
+# Инициализируем базу данных
+db = Database('bot_history.db')
 
 class ChoosingBot(StatesGroup):
     Gpt = State()
@@ -22,43 +31,62 @@ class ChoosingBot(StatesGroup):
 @dp.message(Command('start'))
 async def start_command(message: types.Message):
     await message.answer(
-        "Здарова\n/gpt\n/img")
+        "Выбирай че те надо, пентюх\n/чат\n/картинка")
 
-@dp.message(Command('gpt'))
+@dp.message(Command('чат'))
 async def set_state_gpt(message: types.Message, state: FSMContext):
     await message.answer("Ну спрашивай, я книжки читал.")
     await state.set_state(ChoosingBot.Gpt)
+    await state.update_data(chat_id=str(uuid.uuid4()))
 
-@dp.message(Command('img'))
+@dp.message(Command('картинка'))
 async def set_state_gpt(message: types.Message, state: FSMContext):
     await message.answer("Че нарисовать?")
     await state.set_state(ChoosingBot.Img)
 
 # ChatGPT
 @dp.message(StateFilter("ChoosingBot:Gpt"))
-async def send_answer_request(message: types.Message):
+async def send_answer_request(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_input = message.text
+    
+    # Получаем chat_id из состояния
+    data = await state.get_data()
+    chat_id = data.get('chat_id')
 
     print(user_input)
     msg = await message.answer("Ща пажжи")
 
     try:
+        # Получаем историю последних сообщений
+        chat_history = db.get_chat_history(user_id, limit=5)
+        messages = [{"role": "system", "content": "Ты русскоязычный ассистент."}]
+        
+        # Добавляем историю в контекст
+        for prev_msg, prev_resp in chat_history:
+            messages.append({"role": "user", "content": prev_msg})
+            messages.append({"role": "assistant", "content": prev_resp})
+        
+        # Добавляем текущий запрос
+        messages.append({"role": "user", "content": user_input})
+
         client = AsyncClient()
         response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": user_input}],
+            model="deepseek-chat",
+            messages=messages,
             web_search=False
-
         )
 
-        await msg.edit_text(response.choices[0].message.content, parse_mode='Markdown')
+        response_text = response.choices[0].message.content
+        
+        # Сохраняем сообщение и ответ в базу
+        db.add_message(user_id, user_input, response_text, chat_id)
+        
+        await msg.edit_text(response_text, parse_mode='Markdown')
 
     except Exception as e:
         print("Error: ", e)
-        chat_gpt_response = "Ну и хуйню ты сморозил..."
-
-    # await msg.edit_text(chat_gpt_response, parse_mode='Markdown')
+        await msg.edit_text("Ну и хуйню ты сморозил...", parse_mode='Markdown')
 
 # image
 @dp.message(StateFilter("ChoosingBot:Img"))
