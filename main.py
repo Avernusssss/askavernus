@@ -28,29 +28,39 @@ db = Database('bot_history.db')
 class ChoosingBot(StatesGroup):
     Gpt = State()
     Img = State()
+    Mute = State()
 
 # Создаем клавиатуру
-def get_main_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
+def get_main_keyboard(message: types.Message) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [
+            KeyboardButton(text="💬 Чат"),
+            KeyboardButton(text="🎨 Картинка"),
+        ]
+    ]
+    
+    # Добавляем кнопки админа
+    if message and str(message.from_user.id) == os.getenv("ADMIN_ID"):
+        keyboard.extend([
             [
-                KeyboardButton(text="💬 Чат"),
-                KeyboardButton(text="🎨 Картинка"),
-            ],
-            [
-                KeyboardButton(text="📜 История")
+                KeyboardButton(text="📜 История"),
+                KeyboardButton(text="🔇 Мут")
             ]
-        ],
+        ])
+    else:
+        keyboard.append([KeyboardButton(text="📜 История")])
+    
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
         resize_keyboard=True,
         persistent=True
     )
-    return keyboard
 
 @dp.message(Command('start'))
 async def start_command(message: types.Message):
     await message.answer(
         "Выбирай че те надо, пентюх",
-        reply_markup=get_main_keyboard()
+        reply_markup=get_main_keyboard(message)
     )
 
 # Обработчики для кнопок
@@ -83,10 +93,50 @@ async def history_button(message: types.Message):
     
     await message.answer(response)
 
+# Добавляем обработчик кнопки мута
+@dp.message(F.text == "🔇 Мут")
+async def mute_button(message: types.Message, state: FSMContext):
+    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
+        return
+    
+    await message.answer(
+        "Отправь ID пользователя и время мута в секундах в формате:\n"
+        "ID время\n"
+        "Например: 123456789 300"
+    )
+    await state.set_state(ChoosingBot.Mute)
+
+# Обработчик ввода данных для мута
+@dp.message(StateFilter("ChoosingBot:Mute"))
+async def process_mute(message: types.Message, state: FSMContext):
+    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
+        return
+    
+    try:
+        user_id, duration = map(int, message.text.split())
+        db.add_mute(user_id, duration)
+        await message.answer(
+            f"Пользователь {user_id} замучен на {duration} секунд",
+            reply_markup=get_main_keyboard(message)
+        )
+    except ValueError:
+        await message.answer(
+            "Неверный формат. Используй: ID время",
+            reply_markup=get_main_keyboard(message)
+        )
+    
+    await state.clear()
+
 # ChatGPT
 @dp.message(StateFilter("ChoosingBot:Gpt"))
 async def send_answer_request(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    
+    # Проверяем на мут
+    if db.is_muted(user_id):
+        await message.answer("Ты в муте, чюдик")
+        return
+        
     username = message.from_user.full_name  # Получаем полное имя пользователя
     print(f"Новое сообщение от пользователя {username} (ID: {user_id})")
     user_input = message.text
@@ -132,6 +182,13 @@ async def send_answer_request(message: types.Message, state: FSMContext):
 # image
 @dp.message(StateFilter("ChoosingBot:Img"))
 async def send_image(message: types.Message):
+    user_id = message.from_user.id
+    
+    # Проверяем на мут
+    if db.is_muted(user_id):
+        await message.answer("Ты в муте, чюдик")
+        return
+        
     user_input = await (translate_text(str(message.text)))
     msg = await message.answer("Нужно вдохновение, пажжи")
     try:

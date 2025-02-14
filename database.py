@@ -19,6 +19,13 @@ class Database:
             chat_id TEXT
         )
         """)
+        
+        self.cur.execute("""
+        CREATE TABLE IF NOT EXISTS muted_users (
+            user_id INTEGER PRIMARY KEY,
+            muted_until DATETIME
+        )
+        """)
         self.conn.commit()
     
     def add_message(self, user_id: int, username: str, message: str, response: str, chat_id: str):
@@ -62,4 +69,18 @@ class Database:
             ORDER BY timestamp DESC 
             LIMIT ?
         """, (user_id, limit))
-        return self.cur.fetchall() 
+        return self.cur.fetchall()
+    
+    def add_mute(self, user_id: int, duration_seconds: int):
+        self.cur.execute(
+            "INSERT OR REPLACE INTO muted_users (user_id, muted_until) VALUES (?, datetime('now', '+' || ? || ' seconds'))",
+            (user_id, duration_seconds)
+        )
+        self.conn.commit()
+    
+    def is_muted(self, user_id: int) -> bool:
+        self.cur.execute(
+            "SELECT 1 FROM muted_users WHERE user_id = ? AND muted_until > datetime('now')",
+            (user_id,)
+        )
+        return bool(self.cur.fetchone()) 
