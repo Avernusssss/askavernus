@@ -32,4 +32,32 @@ class Database:
             "SELECT message, response FROM chat_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
             (user_id, limit)
         )
+        return self.cur.fetchall()
+    
+    def get_all_history(self, limit: int = 50) -> list:
+        self.cur.execute("""
+            SELECT 
+                user_id,
+                message,
+                response,
+                timestamp,
+                chat_id
+            FROM chat_history 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        """, (limit,))
+        return self.cur.fetchall()
+    
+    def get_user_history(self, user_id: int, limit: int = 20) -> list:
+        self.cur.execute("""
+            SELECT 
+                message,
+                response,
+                timestamp,
+                chat_id
+            FROM chat_history 
+            WHERE user_id = ?
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        """, (user_id, limit))
         return self.cur.fetchall() 
