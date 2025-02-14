@@ -44,10 +44,29 @@ async def set_state_gpt(message: types.Message, state: FSMContext):
     await message.answer("Че нарисовать?")
     await state.set_state(ChoosingBot.Img)
 
+@dp.message(Command('history'))
+async def show_history(message: types.Message):
+    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
+        await message.answer("У вас нет прав для просмотра истории")
+        return
+        
+    history = db.get_all_history(limit=10)  # Получаем последние 10 сообщений
+    
+    response = "📜 Последние сообщения:\n\n"
+    for user_id, msg, resp, timestamp, chat_id in history:
+        response += f"👤 User ID: {user_id}\n"
+        response += f"⏰ Time: {timestamp}\n"
+        response += f"💭 Message: {msg}\n"
+        response += f"🤖 Response: {resp}\n"
+        response += "➖" * 20 + "\n\n"
+    
+    await message.answer(response)
+
 # ChatGPT
 @dp.message(StateFilter("ChoosingBot:Gpt"))
 async def send_answer_request(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
+    print(f"Новое сообщение от пользователя {user_id}")
     user_input = message.text
     
     # Получаем chat_id из состояния
