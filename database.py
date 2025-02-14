@@ -12,6 +12,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
+            username TEXT,
             message TEXT,
             response TEXT,
             timestamp DATETIME,
@@ -20,10 +21,10 @@ class Database:
         """)
         self.conn.commit()
     
-    def add_message(self, user_id: int, message: str, response: str, chat_id: str):
+    def add_message(self, user_id: int, username: str, message: str, response: str, chat_id: str):
         self.cur.execute(
-            "INSERT INTO chat_history (user_id, message, response, timestamp, chat_id) VALUES (?, ?, ?, ?, ?)",
-            (user_id, message, response, datetime.now(), chat_id)
+            "INSERT INTO chat_history (user_id, username, message, response, timestamp, chat_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, username, message, response, datetime.now(), chat_id)
         )
         self.conn.commit()
     
@@ -38,6 +39,7 @@ class Database:
         self.cur.execute("""
             SELECT 
                 user_id,
+                username,
                 message,
                 response,
                 timestamp,

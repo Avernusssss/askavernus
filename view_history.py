@@ -18,8 +18,8 @@ def print_all_history():
     history = db.get_all_history()
     
     print("\n=== История всех сообщений ===")
-    for user_id, message, response, timestamp, chat_id in history:
-        print(f"\nПользователь ID: {user_id}")
+    for user_id, username, message, response, timestamp, chat_id in history:
+        print(f"\nПользователь: {username} (ID: {user_id})")
         print(f"Время: {timestamp}")
         print(f"Chat ID: {chat_id}")
         print(f"Сообщение: {message}")

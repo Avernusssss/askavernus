@@ -50,11 +50,11 @@ async def show_history(message: types.Message):
         await message.answer("У вас нет прав для просмотра истории")
         return
         
-    history = db.get_all_history(limit=10)  # Получаем последние 10 сообщений
+    history = db.get_all_history(limit=10)
     
     response = "📜 Последние сообщения:\n\n"
-    for user_id, msg, resp, timestamp, chat_id in history:
-        response += f"👤 User ID: {user_id}\n"
+    for user_id, username, msg, resp, timestamp, chat_id in history:
+        response += f"👤 {username} (ID: {user_id})\n"
         response += f"⏰ Time: {timestamp}\n"
         response += f"💭 Message: {msg}\n"
         response += f"🤖 Response: {resp}\n"
@@ -66,7 +66,8 @@ async def show_history(message: types.Message):
 @dp.message(StateFilter("ChoosingBot:Gpt"))
 async def send_answer_request(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    print(f"Новое сообщение от пользователя {user_id}")
+    username = message.from_user.full_name  # Получаем полное имя пользователя
+    print(f"Новое сообщение от пользователя {username} (ID: {user_id})")
     user_input = message.text
     
     # Получаем chat_id из состояния
@@ -98,8 +99,8 @@ async def send_answer_request(message: types.Message, state: FSMContext):
 
         response_text = response.choices[0].message.content
         
-        # Сохраняем сообщение и ответ в базу
-        db.add_message(user_id, user_input, response_text, chat_id)
+        # Сохраняем сообщение и ответ в базу с именем пользователя
+        db.add_message(user_id, username, user_input, response_text, chat_id)
         
         await msg.edit_text(response_text, parse_mode='Markdown')
 
