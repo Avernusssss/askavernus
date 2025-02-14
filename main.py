@@ -12,6 +12,7 @@ from aiogram import Bot, Dispatcher, types, Router, F
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 load_dotenv()
 
@@ -28,24 +29,44 @@ class ChoosingBot(StatesGroup):
     Gpt = State()
     Img = State()
 
+# Создаем клавиатуру
+def get_main_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="💬 Чат"),
+                KeyboardButton(text="🎨 Картинка"),
+            ],
+            [
+                KeyboardButton(text="📜 История")
+            ]
+        ],
+        resize_keyboard=True,
+        persistent=True
+    )
+    return keyboard
+
 @dp.message(Command('start'))
 async def start_command(message: types.Message):
     await message.answer(
-        "Выбирай че те надо, пентюх\n/чат\n/картинка")
+        "Выбирай че те надо, пентюх",
+        reply_markup=get_main_keyboard()
+    )
 
-@dp.message(Command('чат'))
-async def set_state_gpt(message: types.Message, state: FSMContext):
+# Обработчики для кнопок
+@dp.message(F.text == "💬 Чат")
+async def chat_button(message: types.Message, state: FSMContext):
     await message.answer("Ну спрашивай, я книжки читал.")
     await state.set_state(ChoosingBot.Gpt)
     await state.update_data(chat_id=str(uuid.uuid4()))
 
-@dp.message(Command('картинка'))
-async def set_state_gpt(message: types.Message, state: FSMContext):
+@dp.message(F.text == "🎨 Картинка")
+async def image_button(message: types.Message, state: FSMContext):
     await message.answer("Че нарисовать?")
     await state.set_state(ChoosingBot.Img)
 
-@dp.message(Command('history'))
-async def show_history(message: types.Message):
+@dp.message(F.text == "📜 История")
+async def history_button(message: types.Message):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         await message.answer("У вас нет прав для просмотра истории")
         return
