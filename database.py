@@ -32,4 +32,4 @@ class Database:
             "SELECT message, response FROM chat_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT ?",
             (user_id, limit)
         )
-        return self.cur.execute.fetchall() 
+        return self.cur.fetchall() 
