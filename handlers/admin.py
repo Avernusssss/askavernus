@@ -80,7 +80,7 @@ async def models_command(message: Message, ai_service: AIService, state: FSMCont
     if current_state:
         await state.set_state(current_state)
 
-@router.message(F.text == "🤖 Модели AI", flags={"outer": True})
+@router.message(F.text == "🤖 Модели AI")
 async def ai_models_button(message: Message, state: FSMContext, ai_service: AIService):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
@@ -141,7 +141,7 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
         
         if message.text == "◀️ Назад":
             # Возвращаемся к предыдущему состоянию, если оно было
-            if previous_state:
+            if previous_state and previous_state in [BotStates.Chat, BotStates.Img]:
                 await state.set_state(previous_state)
             else:
                 await state.clear()
@@ -166,7 +166,7 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
             )
             
             # Возвращаемся к предыдущему состоянию
-            if previous_state:
+            if previous_state and previous_state in [BotStates.Chat, BotStates.Img]:
                 await state.set_state(previous_state)
             else:
                 await state.clear()
@@ -182,7 +182,7 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
         )
         
         # Возвращаемся к предыдущему состоянию
-        if previous_state:
+        if previous_state and previous_state in [BotStates.Chat, BotStates.Img]:
             await state.set_state(previous_state)
         else:
             await state.clear()
