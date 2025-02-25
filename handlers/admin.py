@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command, StateFilter, Text
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 
@@ -52,7 +52,7 @@ async def history_button(message: Message, db):
         logger.error(f"Error fetching history: {e}", exc_info=True)
         await message.answer("Ошибка при получении истории")
 
-@router.message(Command('models'))
+@router.message(Command('models'), flags={"always": True})
 async def models_command(message: Message, ai_service: AIService):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
@@ -77,6 +77,10 @@ async def models_command(message: Message, ai_service: AIService):
 async def ai_models_button(message: Message, state: FSMContext, ai_service: AIService):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
+    
+    # Сохраняем предыдущее состояние, чтобы вернуться к нему после выбора модели
+    current_state = await state.get_state()
+    await state.update_data(previous_state=current_state)
     
     try:    
         await message.answer("Получаю список доступных моделей...")
@@ -124,10 +128,19 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
         return
     
     try:
+        # Получаем данные о предыдущем состоянии
+        data = await state.get_data()
+        previous_state = data.get('previous_state')
+        
         if message.text == "◀️ Назад":
-            await state.clear()
+            # Возвращаемся к предыдущему состоянию, если оно было
+            if previous_state:
+                await state.set_state(previous_state)
+            else:
+                await state.clear()
+                
             await message.answer(
-                "Возвращаемся в главное меню",
+                "Возвращаемся в предыдущее меню",
                 reply_markup=get_main_keyboard(message)
             )
             return
@@ -144,7 +157,13 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
                 f"Модель '{selected_model}' не найдена. Пожалуйста, выберите из списка.",
                 reply_markup=get_main_keyboard(message)
             )
-            await state.clear()
+            
+            # Возвращаемся к предыдущему состоянию
+            if previous_state:
+                await state.set_state(previous_state)
+            else:
+                await state.clear()
+                
             return
         
         # Устанавливаем новую модель
@@ -154,9 +173,14 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
             f"Модель успешно изменена на: {selected_model}",
             reply_markup=get_main_keyboard(message)
         )
-        await state.clear()
-    
+        
+        # Возвращаемся к предыдущему состоянию
+        if previous_state:
+            await state.set_state(previous_state)
+        else:
+            await state.clear()
+            
     except Exception as e:
         logger.error(f"Error selecting model: {e}", exc_info=True)
         await message.answer("Ошибка при выборе модели")
-        await state.clear() 
+        await state.clear()
