@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from database import Database
 from services.ai_service import AIService
 from handlers import common, chat, image, admin
+from handlers.middleware import CommandMiddleware
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -43,6 +44,9 @@ async def dependencies_middleware(handler, event, data):
     data["db"] = db
     data["ai_service"] = ai_service
     return await handler(event, data)
+
+# После инициализации диспетчера
+dp.message.middleware(CommandMiddleware())
 
 async def main():
     logger.info("Starting bot")
