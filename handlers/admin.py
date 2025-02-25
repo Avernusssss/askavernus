@@ -2,6 +2,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.filters.magic_data import MagicData
 
 import os
 import logging
@@ -80,14 +81,18 @@ async def models_command(message: Message, ai_service: AIService, state: FSMCont
     if current_state:
         await state.set_state(current_state)
 
-@router.message(F.text == "🤖 Модели AI")
-async def ai_models_button(message: Message, state: FSMContext, ai_service: AIService):
+@router.message(F.text == "🤖 Модели AI", flags={"outer": True})
+async def ai_models_button_high_priority(message: Message, state: FSMContext, ai_service: AIService):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
     
-    # Сохраняем предыдущее состояние, чтобы вернуться к нему после выбора модели
+    # Сохраняем текущее состояние
     current_state = await state.get_state()
-    await state.update_data(previous_state=current_state)
+    logger.info(f"AI Models button pressed. Current state: {current_state}")
+    
+    # Очищаем состояние для обработки команды
+    if current_state:
+        await state.clear()
     
     try:    
         await message.answer("Получаю список доступных моделей...")
@@ -95,6 +100,9 @@ async def ai_models_button(message: Message, state: FSMContext, ai_service: AISe
         
         if not models:
             await message.answer("Не удалось получить список моделей")
+            # Восстанавливаем состояние
+            if current_state:
+                await state.set_state(current_state)
             return
         
         # Создаем клавиатуру с моделями
@@ -121,12 +129,18 @@ async def ai_models_button(message: Message, state: FSMContext, ai_service: AISe
             reply_markup=reply_markup
         )
         
+        # Сохраняем предыдущее состояние перед установкой нового
+        await state.update_data(previous_state=current_state)
+        
         # Устанавливаем состояние выбора модели
         await state.set_state(BotStates.ChooseModel)
     
     except Exception as e:
         logger.error(f"Error showing AI models: {e}", exc_info=True)
         await message.answer("Ошибка при получении списка моделей")
+        # Восстанавливаем состояние в случае ошибки
+        if current_state:
+            await state.set_state(current_state)
 
 @router.message(StateFilter(BotStates.ChooseModel))
 async def process_model_selection(message: Message, state: FSMContext, ai_service: AIService):
@@ -191,3 +205,8 @@ async def process_model_selection(message: Message, state: FSMContext, ai_servic
         logger.error(f"Error selecting model: {e}", exc_info=True)
         await message.answer("Ошибка при выборе модели")
         await state.clear()
+
+@router.message(F.text == "🤖 Модели AI", MagicData(F.state != BotStates.ChooseModel))
+async def global_ai_models_button(message: Message, state: FSMContext, ai_service: AIService):
+    # Перенаправляем на основной обработчик
+    await ai_models_button(message, state, ai_service)

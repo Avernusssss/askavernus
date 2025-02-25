@@ -26,17 +26,14 @@ bot = Bot(os.getenv("BOT_TOKEN"))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
+# Регистрируем CommandMiddleware первым
+dp.message.middleware(CommandMiddleware())
+
 # Инициализация базы данных
 db = Database('bot_history.db')
 
 # Инициализация сервиса AI
 ai_service = AIService(os.getenv("MNN_API_KEY"))
-
-# Регистрация роутеров
-dp.include_router(common.router)
-dp.include_router(chat.router)
-dp.include_router(image.router)
-dp.include_router(admin.router)
 
 # Middleware для внедрения зависимостей
 @dp.update.middleware()
@@ -45,8 +42,11 @@ async def dependencies_middleware(handler, event, data):
     data["ai_service"] = ai_service
     return await handler(event, data)
 
-# После инициализации диспетчера
-dp.message.middleware(CommandMiddleware())
+# Регистрация роутеров
+dp.include_router(common.router)
+dp.include_router(chat.router)
+dp.include_router(image.router)
+dp.include_router(admin.router)
 
 async def main():
     logger.info("Starting bot")
