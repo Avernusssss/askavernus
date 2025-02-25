@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.filters import Command, StateFilter, Text
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 
@@ -52,8 +52,11 @@ async def history_button(message: Message, db):
         logger.error(f"Error fetching history: {e}", exc_info=True)
         await message.answer("Ошибка при получении истории")
 
-@router.message(Command('models'), flags={"always": True})
-async def models_command(message: Message, ai_service: AIService):
+@router.message(Command('models'), flags={"outer": True})
+async def models_command(message: Message, ai_service: AIService, state: FSMContext):
+    # Сохраняем текущее состояние
+    current_state = await state.get_state()
+    
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
     
@@ -72,8 +75,12 @@ async def models_command(message: Message, ai_service: AIService):
     except Exception as e:
         logger.error(f"Error fetching models: {e}", exc_info=True)
         await message.answer("Ошибка при получении списка моделей")
+    
+    # Восстанавливаем состояние
+    if current_state:
+        await state.set_state(current_state)
 
-@router.message(F.text == "🤖 Модели AI")
+@router.message(F.text == "🤖 Модели AI", flags={"outer": True})
 async def ai_models_button(message: Message, state: FSMContext, ai_service: AIService):
     if str(message.from_user.id) != os.getenv("ADMIN_ID"):
         return
