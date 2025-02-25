@@ -1,4 +1,4 @@
-from g4f import AsyncClient
+from mnnai import MNN
 from googletrans import Translator
 from database import Database
 import uuid
@@ -22,15 +22,19 @@ bot = Bot(os.getenv("BOT_TOKEN"))
 dp = Dispatcher()
 router = Router()
 
-# Инициализируем базу данных
 db = Database('bot_history.db')
 
-class ChoosingBot(StatesGroup):
-    Gpt = State()
-    Img = State()
-    Mute = State()
+mnn_client = MNN(
+    key=os.getenv("MNN_API_KEY"),
+    max_retries=2,  
+    timeout=60,     
+    debug=False     
+)
 
-# Создаем клавиатуру
+class ChoosingBot(StatesGroup):
+    Chat = State()
+    Img = State()
+
 def get_main_keyboard(message: types.Message) -> ReplyKeyboardMarkup:
     keyboard = [
         [
@@ -39,12 +43,10 @@ def get_main_keyboard(message: types.Message) -> ReplyKeyboardMarkup:
         ]
     ]
     
-    # Добавляем кнопки админа
     if message and str(message.from_user.id) == os.getenv("ADMIN_ID"):
         keyboard.extend([
             [
-                KeyboardButton(text="📜 История"),
-                KeyboardButton(text="🔇 Мут")
+                KeyboardButton(text="📜 История")
             ]
         ])
     else:
@@ -63,11 +65,10 @@ async def start_command(message: types.Message):
         reply_markup=get_main_keyboard(message)
     )
 
-# Обработчики для кнопок
 @dp.message(F.text == "💬 Чат")
 async def chat_button(message: types.Message, state: FSMContext):
     await message.answer("Ну спрашивай, я книжки читал.")
-    await state.set_state(ChoosingBot.Gpt)
+    await state.set_state(ChoosingBot.Chat)
     await state.update_data(chat_id=str(uuid.uuid4()))
 
 @dp.message(F.text == "🎨 Картинка")
@@ -93,111 +94,68 @@ async def history_button(message: types.Message):
     
     await message.answer(response)
 
-# Добавляем обработчик кнопки мута
-@dp.message(F.text == "🔇 Мут")
-async def mute_button(message: types.Message, state: FSMContext):
-    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
-        return
-    
-    await message.answer(
-        "Отправь ID пользователя и время мута в секундах в формате:\n"
-        "ID время\n"
-        "Например: 123456789 300"
-    )
-    await state.set_state(ChoosingBot.Mute)
-
-# Обработчик ввода данных для мута
-@dp.message(StateFilter("ChoosingBot:Mute"))
-async def process_mute(message: types.Message, state: FSMContext):
-    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
-        return
-    
-    try:
-        user_id, duration = map(int, message.text.split())
-        db.add_mute(user_id, duration)
-        await message.answer(
-            f"Пользователь {user_id} замучен на {duration} секунд",
-            reply_markup=get_main_keyboard(message)
-        )
-    except ValueError:
-        await message.answer(
-            "Неверный формат. Используй: ID время",
-            reply_markup=get_main_keyboard(message)
-        )
-    
-    await state.clear()
-
-# ChatGPT
-@dp.message(StateFilter("ChoosingBot:Gpt"))
-async def send_answer_request(message: types.Message, state: FSMContext):
+@dp.message(StateFilter("ChoosingBot:Chat"))
+async def chat_message(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    
-    # Проверяем на мут
-    if db.is_muted(user_id):
-        await message.answer("Ты в муте, чюдик")
-        return
-        
-    username = message.from_user.full_name  # Получаем полное имя пользователя
-    print(f"Новое сообщение от пользователя {username} (ID: {user_id})")
+    username = message.from_user.full_name
     user_input = message.text
     
-    # Получаем chat_id из состояния
     data = await state.get_data()
     chat_id = data.get('chat_id')
 
-    print(user_input)
-    msg = await message.answer("Ща пажжи")
+    msg = await message.answer("Думаю...")
+    full_response = ""
 
     try:
-        # Получаем историю последних сообщений
         chat_history = db.get_chat_history(user_id, limit=5)
         messages = [{"role": "system", "content": "Ты русскоязычный ассистент."}]
         
-        # Добавляем историю в контекст
         for prev_msg, prev_resp in chat_history:
             messages.append({"role": "user", "content": prev_msg})
             messages.append({"role": "assistant", "content": prev_resp})
         
-        # Добавляем текущий запрос
         messages.append({"role": "user", "content": user_input})
 
-        client = AsyncClient()
-        response = await client.chat.completions.create(
-            model="deepseek-chat",
+        client = MNN(key=os.getenv("MNN_API_KEY"))
+        stream = await client.chat.async_create(
+            model="gpt-4o-mini",
             messages=messages,
-            web_search=False
+            stream=True
         )
-
-        response_text = response.choices[0].message.content
         
-        # Сохраняем сообщение и ответ в базу с именем пользователя
-        db.add_message(user_id, username, user_input, response_text, chat_id)
+        async for chunk in stream:
+            if chunk.choices[0].delta.content:
+                full_response += chunk.choices[0].delta.content
+                if len(full_response) % 20 == 0:
+                    try:
+                        await msg.edit_text(full_response, parse_mode='Markdown')
+                    except:
+                        await msg.edit_text(full_response)
         
-        await msg.edit_text(response_text, parse_mode='Markdown')
+        try:
+            await msg.edit_text(full_response, parse_mode='Markdown')
+        except:
+            await msg.edit_text(full_response)
+        
+        db.add_message(user_id, username, user_input, full_response, chat_id)
 
     except Exception as e:
-        print("Error: ", e)
-        await msg.edit_text("Ну и хуйню ты сморозил...", parse_mode='Markdown')
+        print(f"Error in chat: {e}")
+        await msg.edit_text(f"Произошла ошибка: {str(e)}")
 
 # image
 @dp.message(StateFilter("ChoosingBot:Img"))
 async def send_image(message: types.Message):
     user_id = message.from_user.id
-    
-    # Проверяем на мут
-    if db.is_muted(user_id):
-        await message.answer("Ты в муте, чюдик")
-        return
-        
     user_input = await (translate_text(str(message.text)))
     msg = await message.answer("Нужно вдохновение, пажжи")
     try:
-        client = AsyncClient()
-        response = await client.images.generate(
+        client = MNN(key=os.getenv("MNN_API_KEY"))
+        response = await client.images.async_create(
             prompt=user_input,
-            model="flux",
-
-            response_format="url"
+            model="dall-e-3",
+            n=1,
+            size="1024x1024"
         )
         await msg.edit_text(f"На:\n{response.data[0].url}")
     except Exception as e:
@@ -208,6 +166,30 @@ async def translate_text(data: str):
     async with Translator() as translator:
         result = await translator.translate(data, dest='en', src='ru')
         return (result.text)
+
+async def get_available_models():
+    try:
+        models = mnn_client.GetModels()
+        return models
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        return []
+
+@dp.message(Command('models'))
+async def models_command(message: types.Message):
+    if str(message.from_user.id) != os.getenv("ADMIN_ID"):
+        return
+        
+    await message.answer("Получаю список доступных моделей...")
+    models = await get_available_models()
+    
+    if models:
+        response = "📋 Доступные модели:\n\n"
+        for model in models:
+            response += f"• {model}\n"
+        await message.answer(response)
+    else:
+        await message.answer("Не удалось получить список моделей")
 
 async def main():
     await dp.start_polling(bot)
