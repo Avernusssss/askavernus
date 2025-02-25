@@ -13,21 +13,40 @@ class AIService:
         )
         self.current_model = default_model
         self.models_cache = TTLCache(maxsize=100, ttl=300)  # Кэш на 5 минут
+        
+        # Предустановленный список моделей
+        self.default_models = [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gpt-3.5-turbo",
+            "claude-3-haiku",
+            "claude-3-sonnet",
+            "claude-3-opus",
+            "dall-e-3"
+        ]
     
     async def get_available_models(self):
         """Получает список доступных моделей с кэшированием"""
         if 'models' not in self.models_cache:
             try:
-                models = self.client.GetModels()
-                if models:
-                    self.models_cache['models'] = models
+                # Пытаемся получить модели через API
+                try:
+                    models = self.client.GetModels()
+                    if models and isinstance(models, list) and len(models) > 0:
+                        self.models_cache['models'] = models
+                    else:
+                        # Если API вернул пустой список или не список, используем предустановленные модели
+                        self.models_cache['models'] = self.default_models
+                except (AttributeError, Exception) as e:
+                    print(f"Error getting models from API: {e}")
+                    # Если метод GetModels не существует или вызвал ошибку, используем предустановленные модели
+                    self.models_cache['models'] = self.default_models
             except Exception as e:
-                print(f"Error getting models: {e}")
-                # Если кэш пуст и произошла ошибка, добавляем модели по умолчанию
-                if 'models' not in self.models_cache:
-                    self.models_cache['models'] = ["gpt-4o-mini", "gpt-4o", "dall-e-3"]
+                print(f"Unexpected error getting models: {e}")
+                # В случае любой другой ошибки используем предустановленные модели
+                self.models_cache['models'] = self.default_models
         
-        return self.models_cache.get('models', [])
+        return self.models_cache.get('models', self.default_models)
     
     async def get_image_models(self):
         """Получает список моделей, поддерживающих генерацию изображений"""
