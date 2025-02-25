@@ -83,16 +83,29 @@ async def history_button(message: types.Message):
         return
         
     history = db.get_all_history(limit=10)
+         
+    MAX_MESSAGE_LENGTH = 4000
+    current_response = "📜 Последние сообщения:\n\n"
     
-    response = "📜 Последние сообщения:\n\n"
     for user_id, username, msg, resp, timestamp, chat_id in history:
-        response += f"👤 {username} (ID: {user_id})\n"
-        response += f"⏰ Time: {timestamp}\n"
-        response += f"💭 Message: {msg}\n"
-        response += f"🤖 Response: {resp}\n"
-        response += "➖" * 20 + "\n\n"
+        entry = f"👤 {username} (ID: {user_id})\n"
+        entry += f"⏰ Time: {timestamp}\n"
+        entry += f"💭 Message: {msg}\n"
+        
+        if len(resp) > 500:
+            resp = resp[:500] + "... (сообщение обрезано)"
+            
+        entry += f"🤖 Response: {resp}\n"
+        entry += "➖" * 20 + "\n\n"
+        
+        if len(current_response) + len(entry) > MAX_MESSAGE_LENGTH:
+            await message.answer(current_response)
+            current_response = entry
+        else:
+            current_response += entry
     
-    await message.answer(response)
+    if current_response:
+        await message.answer(current_response)
 
 @dp.message(StateFilter("ChoosingBot:Chat"))
 async def chat_message(message: types.Message, state: FSMContext):
@@ -105,7 +118,10 @@ async def chat_message(message: types.Message, state: FSMContext):
 
     msg = await message.answer("Думаю...")
     full_response = ""
-
+    current_message_text = ""
+    MAX_MESSAGE_LENGTH = 4000
+    message_parts = []  
+    
     try:
         chat_history = db.get_chat_history(user_id, limit=5)
         messages = [{"role": "system", "content": "Ты русскоязычный ассистент."}]
@@ -125,20 +141,41 @@ async def chat_message(message: types.Message, state: FSMContext):
         
         async for chunk in stream:
             if chunk.choices[0].delta.content:
-                full_response += chunk.choices[0].delta.content
-                if len(full_response) % 20 == 0:
+                content = chunk.choices[0].delta.content
+                full_response += content
+                current_message_text += content
+                
+                if len(current_message_text) >= MAX_MESSAGE_LENGTH:
                     try:
-                        await msg.edit_text(full_response, parse_mode='Markdown')
+                        await msg.edit_text(current_message_text, parse_mode='Markdown')
                     except:
-                        await msg.edit_text(full_response)
+                        await msg.edit_text(current_message_text)
+                    
+                    message_parts.append(current_message_text)
+                    
+                    msg = await message.answer("Продолжение...")
+                    current_message_text = ""
+                
+                elif len(current_message_text) % 20 == 0:
+                    try:
+                        await msg.edit_text(current_message_text, parse_mode='Markdown')
+                    except:
+                        await msg.edit_text(current_message_text)
         
-        try:
-            await msg.edit_text(full_response, parse_mode='Markdown')
-        except:
-            await msg.edit_text(full_response)
+        if current_message_text:
+            try:
+                await msg.edit_text(current_message_text, parse_mode='Markdown')
+            except:
+                await msg.edit_text(current_message_text)
+            
+            message_parts.append(current_message_text)
+        
+        if len(message_parts) > 1:
+            await message.answer("Ответ был разбит на несколько частей. Хотите получить полный ответ как файл? Отправьте /file")
+            await state.update_data(last_full_response=full_response)
         
         db.add_message(user_id, username, user_input, full_response, chat_id)
-
+        
     except Exception as e:
         print(f"Error in chat: {e}")
         await msg.edit_text(f"Произошла ошибка: {str(e)}")
@@ -190,6 +227,39 @@ async def models_command(message: types.Message):
         await message.answer(response)
     else:
         await message.answer("Не удалось получить список моделей")
+
+async def send_long_message(message: types.Message, text: str):
+    MAX_MESSAGE_LENGTH = 4000  
+    
+    for i in range(0, len(text), MAX_MESSAGE_LENGTH):
+        part = text[i:i + MAX_MESSAGE_LENGTH]
+        await message.answer(part)
+
+async def send_as_file(message: types.Message, text: str, filename="response.txt"):
+    """Отправляет длинный текст как файл"""
+    from io import BytesIO
+    
+    bio = BytesIO(text.encode('utf-8'))
+    bio.name = filename
+    
+    await message.answer_document(bio)
+
+@dp.message(Command('file'))
+async def send_last_response_as_file(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    last_response = data.get('last_full_response')
+    
+    if not last_response:
+        await message.answer("Нет сохраненного ответа для отправки.")
+        return
+    
+    from io import BytesIO
+    
+    bio = BytesIO(last_response.encode('utf-8'))
+    bio.name = "full_response.txt"
+    
+    await message.answer("Вот полный ответ:")
+    await message.answer_document(bio)
 
 async def main():
     await dp.start_polling(bot)
