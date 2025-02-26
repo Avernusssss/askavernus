@@ -1,4 +1,4 @@
-from aiogram import F, Router
+from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -66,4 +66,12 @@ async def send_last_response_as_file(message: Message, state: FSMContext):
         return
     
     await message.answer("Вот полный ответ:")
-    await send_as_file(message, last_response, "full_response.txt") 
+    await send_as_file(message, last_response, "full_response.txt")
+
+@router.message(Command("models"))
+async def show_models(message: types.Message, data: dict):
+    # Обработка команды /models
+    # Этот обработчик будет вызван, если сообщение начинается с /models
+    await message.answer("Доступные модели: ...")
+
+# Другие обработчики команд... 

@@ -1,4 +1,4 @@
-from aiogram import F, Router
+from aiogram import F, Router, types
 from aiogram.filters import StateFilter
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -60,4 +60,13 @@ async def chat_message(message: Message, state: FSMContext, ai_service: AIServic
         
     except Exception as e:
         logger.error(f"Error in chat processing: {e}", exc_info=True)
-        await message.answer(f"Произошла ошибка: {str(e)}") 
+        await message.answer(f"Произошла ошибка: {str(e)}")
+
+@router.message()
+async def handle_message(message: types.Message, data: dict):
+    # Проверяем, что сообщение не является командой
+    if data.get("is_command", False):
+        return  # Пропускаем обработку, так как это команда
+    
+    # Обработка обычного сообщения в диалоге
+    # ... 
